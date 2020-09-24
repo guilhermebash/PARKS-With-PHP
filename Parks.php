@@ -26,6 +26,9 @@
 
 			$lines = $this->getLinesResponse($response);
 
+			if ($lines[1] == '% Unknown command.')
+				return ['status' => false, 'message' => $lines[1]];
+
 			$onu_data = new \StdClass();
 
 			foreach ($lines as $line){
@@ -44,18 +47,50 @@
 
 			}
 
-			return $onu_data;
+			return ['status' => true, 'data' => $onu_data];
+		}
+
+		public function removeOnu($serial_or_alias){
+			$onu_info = $this->getOnuInfo($serial_or_alias);
+
+			if ($onu_info['status'] === false)
+				return ['status' => false, 'message' => $onu_info['message']];
+			
+			$interface = $onu_info['data']->Interface;
+			$onu_serial = $onu_info['data']->Serial;
+
+			$command = 'configure terminal';
+			$this->telnet_instance->DoCommand($command, $response);
+
+			$lines = $this->getLinesResponse($response);
+
+			if (count($lines)>0)
+				return ['status' => false, 'message' => $lines[1]];
+
+			$command = "interface {$interface}";
+			$this->telnet_instance->DoCommand($command, $response);
+
+			$lines = $this->getLinesResponse($response);
+
+			if (count($lines)>0)
+				return ['status' => false, 'message' => $lines[1]];
+
+			$command = "no onu {$onu_serial}";
+			$this->telnet_instance->DoCommand($command, $response);
 		}
 
 		public function changeAliasOnuBySerial($serial_onu, $alias){
 
 			$onu_info = $this->getOnuInfo($serial_onu);
 
+			if ($onu_info['status'] === false)
+				return ['status' => false, 'message' => $onu_info['message']];
+
 			if ($onu_info == $alias)
 				return ['status' => false, 'message' => 'The ONU already has this alias'];
 
-			$interface = $onu_info->Interface;
-			$onu_serial = $onu_info->Serial;
+			$interface = $onu_info['data']->Interface;
+			$onu_serial = $onu_info['data']->Serial;
 			
 			$command = 'configure terminal';
 			$this->telnet_instance->DoCommand($command, $response);
@@ -97,7 +132,7 @@
 
 			$onu_info = $this->getOnuInfo($serial_onu);
 
-			if ($onu_info->Alias == $alias)
+			if ($onu_info['data']->Alias == $alias)
 				return ['status' => true, 'message' => 'Alias ​​changed successfully.'];
 
 			return ['status' => false, 'message' => 'A mysterious error has occurred.'];
