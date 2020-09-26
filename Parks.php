@@ -29,6 +29,8 @@
 			if ($lines[1] == '% Unknown command.')
 				return ['status' => false, 'message' => $lines[1]];
 
+			
+
 			$onu_data = new \StdClass();
 
 			foreach ($lines as $line){
@@ -83,6 +85,8 @@
 
 			$onu_info = $this->getOnuInfo($serial_onu);
 
+
+
 			if ($onu_info['status'] === false)
 				return ['status' => false, 'message' => $onu_info['message']];
 
@@ -91,11 +95,15 @@
 
 			$interface = $onu_info['data']->Interface;
 			$onu_serial = $onu_info['data']->Serial;
+
+	
 			
 			$command = 'configure terminal';
 			$this->telnet_instance->DoCommand($command, $response);
 
 			$lines = $this->getLinesResponse($response);
+
+
 
 			if (count($lines)>0)
 				return ['status' => false, 'message' => $lines[1]];
@@ -105,6 +113,8 @@
 
 			$lines = $this->getLinesResponse($response);
 
+
+
 			if (count($lines)>0)
 				return ['status' => false, 'message' => $lines[1]];
 
@@ -112,6 +122,8 @@
 			$this->telnet_instance->DoCommand($command, $response);
 
 			$lines = $this->getLinesResponse($response);
+
+
 
 			if (count($lines) > 0){
 				$line = explode(':', $lines[1]);
@@ -130,6 +142,9 @@
 			$command = "exit";
 			$this->telnet_instance->DoCommand($command, $response);
 
+			$command = "end";
+			$this->telnet_instance->DoCommand($command, $response);
+
 			$onu_info = $this->getOnuInfo($serial_onu);
 
 			if ($onu_info['data']->Alias == $alias)
@@ -137,4 +152,87 @@
 
 			return ['status' => false, 'message' => 'A mysterious error has occurred.'];
 		}
+
+		public function getFlowPerfilCommands($onu_or_alias){
+
+			$command = "end";
+			$this->telnet_instance->DoCommand($command, $response);
+			
+			$onu_info = $this->getOnuInfo($onu_or_alias);
+
+			if ($onu_info['status'] !== true)
+				return ['status' => false, 'message' => 'Unidentified ONU'];
+
+			$interface = $onu_info['data']->Interface;
+			$pon = str_replace('gpon', '', $interface);
+			$pon = str_replace('/', '', $pon);
+
+			$onu_serial = $onu_info['data']->Serial;
+
+			$commands = [
+				'flow-profile' => "onu {$onu_serial} flow-profile onu_bridge_vlan_{$pon}_pon{$pon}",
+				'vlan-translation-profile' => "onu {$onu_serial} vlan-translation-profile _{$pon} uni-port 1" 
+			];
+
+			return $commands;
+		}
+
+		public function getPowerLevelByOnu($onu_or_alias){
+			$onu_info = $this->getOnuInfo($onu_or_alias);	
+			$power_level = $onu_info['data']->Power_Level;
+			$power_level = explode(' ', $power_level);
+			$power_level = $power_level[array_key_first($power_level)];
+			$power_level = str_replace('dBm', '', $power_level);
+			return $power_level;
+		}
+
+		public function activeOnu($onu_or_alias, $identification){
+			$onu_info = $this->getOnuInfo($onu_or_alias);
+			$interface = $onu_info['data']->Interface;
+
+			$serial_number = $onu_info['data']->Serial;
+
+			$result = $this->changeAliasOnuBySerial($serial_number, $identification);
+
+			$flow_commands = $this->getFlowPerfilCommands($serial_number);
+
+			$command = "end";
+			$this->telnet_instance->DoCommand($command, $response);
+
+			$command = 'configure terminal';
+			$this->telnet_instance->DoCommand($command, $response);
+
+			$lines = $this->getLinesResponse($response);
+
+			if (count($lines)>0)
+				return ['status' => false, 'message' => $lines[1]];
+
+			$command = "interface {$interface}";
+			$this->telnet_instance->DoCommand($command, $response);
+
+			$lines = $this->getLinesResponse($response);
+
+			if (count($lines)>0)
+				return ['status' => false, 'message' => $lines[1]];
+		
+			$command = $flow_commands['flow-profile'];
+			$this->telnet_instance->DoCommand($command, $response);
+
+			$command = $flow_commands['vlan-translation-profile'];
+			$this->telnet_instance->DoCommand($command, $response);
+
+			$command = "end";
+			$this->telnet_instance->DoCommand($command, $response);
+
+			$command = "copy r s";
+			$this->telnet_instance->DoCommand($command, $response);
+
+			sleep(10);
+
+			$sinal = $this->getPowerLevelByOnu($serial_number);
+
+			return ['status'=>true, 'message' => 'ONU ativa com o sinal: ' . $sinal];
+
+			
+		}	
 	}
